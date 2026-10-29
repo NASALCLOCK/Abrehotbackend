@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "abrehot-tutoring",
+  "private_key_id": "d2e834cdc000b45c506bc0c67480f7cdb6df49e3",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDCzNZkbsQw+Ss5\nD5kptjL+satz55ZDP0ofoY6+VReBrK6WhLGYZzL47dHEz81wDr5+nyEZRPPtrC5V\nanr4KxZ8iZBhp+NGrcjJeLDh+rrFGRmedfFjra3nk+4TjSI7k3mf7npUKbpclWqD\nYXmyqAXIST5QJAYAHaR5zLc0UQynIvIkc/U4s7JhA7cbk5loysqDcRR0SwR3SkwZ\nErwtYV/GNnmZT8QCVtwjnxj16lEscHVjPaYicah5B5M7j/Tzw2Zl2AeoqRXOYXtl\ndQYOZrz/Sty+UIUbTawmh/sS78+pAXV8ub5J1XFBqXLOybqNSAcSc/9sQCsHj3lI\nI2GRg5/DAgMBAAECggEAC3hqS2GmVcfmPqbneuhKmmq10M5bL7yDTdeCgzyZdL5J\nTX2kw3eYLcY7Kt6dlzKXDvepyEYiIuWXmNn7Qa+v1Ed5Y/ax0FCdWRetOrE73C09\nL/J780WfztoME8SktmNZrwwo0dnfKmJ18iSEOPvh00hUzf1BCTK1o6JlS0RWfWTc\nA97IrIk3BwYm2XLkaw6rgsdeIurmEgM4QFvASZTTgZQq4W8qm73l5T4piK06maXs\n+0vhTBQ3zyHvUAgS4gnkqjoAk98pKaH5+XELbLKnYgaQzrN+xXnsoY64Prn3gacy\nnuszCdtbR0Bc0b+v85VREe8EfdISh0UpZwd9qwN7sQKBgQDwpsmZfz4Apqb6GHmT\nfOh0qqEn31kVQ6ioG55u48VXVZ6gFFLAt4iQr7yLP0Fu6qDLlqnWL4/ePplsGbPr\nEZnWR+aroeIMKCOpMOZuEELfK20Yq70JtWqrAFYJ1sYhyA++FGsJ9NeQVFv9JSll\nR28IC2W3q8XMAX355/ZkMOSNKQKBgQDPOWqjJlQW8c8uNkQGMKvVc8ltuUvS4Y0w\n2sJW4nIZ7SHNmuB8CMP4Uj9gN04/RY6+FX4Ui6AOVaViG/8BL4ceq5jxfs0SfHBl\npdyd2PxB0iUXPkXmq0wC14+PF0O8Ga7lPVUCaJoHws2v5n3KaJdYGny0n7xa0lhN\naQF96Gf3CwKBgGhmAslbYPuJUKDooz1vj6ylJTqV8yB9dJpROP8kQsUreKA7kNbY\nCB+0jVffPjSvBsireMxZX9FrWMWDtQDCZvmFwbUtilH5y9anRx/yYABO54ovXtfq\nYvcCM1EbYmLfVq0AUJtGI4oSfsGoMHgmcC2OPDddBncFIrCah9JZP51ZAoGAOso+\nT7UTDENkFOc+W0c5qOAlmGSGd3iYFvEpS38JAgP9oBg9cdMGzg9/fWuTXm38dj8g\nuvF14js4JWJt8UcrnW7vgCwKQCFfvebVdU7XGlFlRnfbWvrkILZJOz5NcDMVJGJH\nGNzWPjdtJWdN7rvHnC4/jPr4dAfTF3sf+jmSLUsCgYBLzn7U5CvvYospQXHiYzZ0\ncFa/FaXPmx11VxZB00+yIbo3UJIO25UoAET4nZohKvOfmAeKOoVN7O9s4v8HewSX\ndO7OHeYiE/3peaz22wDGAwvekHEBStznp8+ZyYeCPVFXsBUa9iRGazx1xDGhwZBM\n1CyWM59zNBN0Z3TrPvOr0Q==\n-----END PRIVATE KEY-----\n",
+  "client_email": "abrehottutoring@abrehot-tutoring.iam.gserviceaccount.com",
+  "client_id": "113271986905143398099",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/abrehottutoring%40abrehot-tutoring.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
