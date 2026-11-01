@@ -267,14 +267,14 @@ router.post('/', attachUserIfPresent, async (req, res) => {
     const bookingEmailDelivery = await sendToUser(
           emailRecipient,
           'Booking request received — Abrehot Online Tutorials',
-          'Hi ' + (req.user.fullname || 'there') + ',\n\n' +
+          'Hi ' + ((req.user && req.user.fullname) || 'there') + ',\n\n' +
             'We received your tutoring request and will review it shortly.\n\n' +
             'Tutor: ' + (chosenTutor.fullname || 'your tutor') + '\n' +
             'Subject(s): ' + ((booking.subject || []).join(', ') || other || '-') + '\n' +
             'Session: ' + (session || '-') + '\n' +
             'Meeting platform: ' + ({ googleMeet: 'Google Meet', zoom: 'Zoom', telegram: 'Telegram' }[selectedPlatform] || 'In person') + '\n' +
             `Preferred date/time: ${dateKey} ${time}\n\n` +
-            'If you selected an online platform, the meeting link will be emailed after your payment is approved.\n\n' +
+            'If you selected an online platform, its meeting link will be emailed after your payment is approved. Google Meet links are sent to both you and your tutor.\n\n' +
             '— Abrehot Online Tutorials'
         );
     if (bookingEmailDelivery.sent) {

@@ -74,7 +74,7 @@ router.patch('/:id', async (req, res, next) => {
 
     const approved = action === 'approve';
     const existingBooking = await Booking.findById(id)
-      .select('subscriptionFrequency status paymentStatus platform session groupMode dateKey date time duration subject googleMeetEventId googleMeetJoinUrl zoomMeetingId zoomJoinUrl contactEmail confirmationEmailSentAt')
+      .select('subscriptionFrequency status paymentStatus platform session groupMode dateKey date time duration subject googleMeetEventId googleMeetJoinUrl zoomMeetingId zoomJoinUrl contactEmail confirmationEmailSentAt tutorConfirmationEmailSentAt')
       .lean();
     if (!existingBooking) return res.status(404).json({ message: 'Booking not found.' });
     const reviewTime = new Date();
@@ -136,7 +136,7 @@ router.patch('/:id', async (req, res, next) => {
         };
 
     const booking = await Booking.findByIdAndUpdate(id, update, { new: true, runValidators: false })
-      .populate('tutor', 'fullname user')
+      .populate('tutor', 'fullname email user')
       .populate('requestedBy', 'fullname email');
     if (!booking) return res.status(404).json({ message: 'Booking not found.' });
 
@@ -224,11 +224,40 @@ router.patch('/:id', async (req, res, next) => {
       emailDelivery = { sent: false, reason: 'no-recipient' };
     }
 
+    let tutorEmailDelivery = { sent: false, reason: 'not-required' };
+    if (approved && (isGoogleMeetBooking(booking) || isZoomBooking(booking))) {
+      if (!meetingUrl) {
+        tutorEmailDelivery = { sent: false, reason: 'meeting-not-ready' };
+      } else if (!booking.tutor || !booking.tutor.email) {
+        tutorEmailDelivery = { sent: false, reason: 'no-recipient' };
+      } else if (existingBooking.tutorConfirmationEmailSentAt) {
+        tutorEmailDelivery = { sent: true, alreadySent: true };
+      } else {
+        tutorEmailDelivery = await sendToUser(
+          booking.tutor.email,
+          meetingName + ' link for your tutoring session — Abrehot Online Tutorials',
+          'Hi ' + (booking.tutor.fullname || 'there') + ',\n\n' +
+            'A tutoring booking assigned to you has been confirmed.\n\n' +
+            'Student: ' + ((booking.requestedBy && booking.requestedBy.fullname) || 'your student') + '\n' +
+            'Subject(s): ' + ((booking.subject || []).join(', ') || '-') + '\n' +
+            'Date and time: ' + (booking.dateKey || '') + ' ' + (booking.time || '') + ' (Africa/Addis_Ababa)\n\n' +
+            'Join the ' + meetingName + ' session: ' + meetingUrl + '\n\n' +
+            '— Abrehot Online Tutorials'
+        );
+        if (tutorEmailDelivery.sent) {
+          const sentAt = new Date();
+          await Booking.updateOne({ _id: booking._id }, { $set: { tutorConfirmationEmailSentAt: sentAt } });
+          booking.tutorConfirmationEmailSentAt = sentAt;
+        }
+      }
+    }
+
     res.json({
       message: 'Payment ' + booking.paymentStatus + '.',
       paymentStatus: booking.paymentStatus,
       bookingStatus: booking.status,
       emailDelivery,
+      tutorEmailDelivery,
       zoomDelivery,
       googleMeetDelivery,
       ...(booking.googleMeetJoinUrl ? { googleMeetJoinUrl: booking.googleMeetJoinUrl } : {}),

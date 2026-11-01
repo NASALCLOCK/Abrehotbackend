@@ -50,6 +50,7 @@ const { validatePaymentOnCreate, requireApprovedPayment } = require('./middlewar
 app.post('/api/bookings', validatePaymentOnCreate); // validates + saves the payment screenshot data
 app.use('/api/messages/booking/:bookingId', requireApprovedPayment); // chat locked until payment approved
 app.use('/api/admin/payments', require('./routes/payments')); // admin review; mounted before /api/admin
+app.use('/api/google-calendar', require('./routes/googleCalendar'));
 
 // --- Routes ---
 app.use('/api/auth', require('./routes/auth'));

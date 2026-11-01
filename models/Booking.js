@@ -45,6 +45,7 @@ const bookingSchema = new mongoose.Schema(
     zoomJoinUrl: { type: String },
     bookingEmailSentAt: { type: Date },
     confirmationEmailSentAt: { type: Date },
+    tutorConfirmationEmailSentAt: { type: Date },
     studentFee: { type: String },
     teacherPayment: { type: Number },
     packageFee: { type: String },

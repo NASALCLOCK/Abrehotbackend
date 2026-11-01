@@ -4,56 +4,127 @@ const path = require('path');
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
+const GOOGLE_MEET_API = 'https://meet.googleapis.com/v2';
 const TIME_ZONE = 'Africa/Addis_Ababa';
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/meetings.space.created',
+];
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const pendingStates = new Map();
 let cachedToken;
 
-function getServiceAccount() {
-  const configuredPath = process.env.GOOGLE_SERVICE_ACCOUNT_FILE || 'abrehot-tutoring-d2e834cdc000.json';
-  const credentialsPath = path.resolve(__dirname, '..', configuredPath);
-  let credentials;
-  try {
-    credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      throw new Error('Google Meet credentials file was not found. Set GOOGLE_SERVICE_ACCOUNT_FILE on the backend.');
-    }
-    throw new Error('Google Meet credentials file could not be read or is not valid JSON.');
-  }
-  if (credentials.type !== 'service_account' || !credentials.client_email || !credentials.private_key) {
-    throw new Error('Google Meet credentials must be a service-account JSON file with client_email and private_key.');
+function getOAuthConfig() {
+  const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI } = process.env;
+  if (!GOOGLE_OAUTH_CLIENT_ID || !GOOGLE_OAUTH_CLIENT_SECRET || !GOOGLE_OAUTH_REDIRECT_URI) {
+    throw new Error('Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and GOOGLE_OAUTH_REDIRECT_URI on the backend.');
   }
   if (!process.env.GOOGLE_CALENDAR_ID) {
-    throw new Error('Google Meet is selected, but GOOGLE_CALENDAR_ID is not configured on the backend.');
+    throw new Error('GOOGLE_CALENDAR_ID is not configured on the backend.');
   }
-  return credentials;
+  return { clientId: GOOGLE_OAUTH_CLIENT_ID, clientSecret: GOOGLE_OAUTH_CLIENT_SECRET, redirectUri: GOOGLE_OAUTH_REDIRECT_URI };
 }
 
-function encodeBase64Url(value) {
-  return Buffer.from(value).toString('base64url');
+function getTokenFilePath() {
+  const configuredPath = process.env.GOOGLE_OAUTH_TOKEN_FILE || '.google-calendar-oauth-token.json';
+  return path.resolve(__dirname, '..', configuredPath);
 }
 
-async function getAccessToken() {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
-  const credentials = getServiceAccount();
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const assertionHeader = encodeBase64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const assertionClaims = encodeBase64Url(JSON.stringify({
-    iss: credentials.client_email,
-    scope: CALENDAR_SCOPE,
-    aud: GOOGLE_TOKEN_URL,
-    iat: issuedAt,
-    exp: issuedAt + 3600,
-  }));
-  const unsignedAssertion = `${assertionHeader}.${assertionClaims}`;
-  const signature = crypto.sign('RSA-SHA256', Buffer.from(unsignedAssertion), credentials.private_key);
-  const assertion = `${unsignedAssertion}.${signature.toString('base64url')}`;
+function getStoredRefreshToken() {
+  const tokenPath = getTokenFilePath();
+  let tokenData;
+  try {
+    tokenData = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error('Google Calendar is not connected. Use Connect Google Calendar in the admin Payments page.');
+    }
+    throw new Error('The saved Google Calendar authorization could not be read. Reconnect Google Calendar.');
+  }
+  if (!tokenData.refresh_token) {
+    throw new Error('The saved Google Calendar authorization is incomplete. Reconnect Google Calendar.');
+  }
+  return tokenData.refresh_token;
+}
+
+function saveRefreshToken(refreshToken) {
+  const tokenPath = getTokenFilePath();
+  const tempPath = `${tokenPath}.${crypto.randomUUID()}.tmp`;
+  const data = JSON.stringify({ refresh_token: refreshToken });
+  try {
+    fs.writeFileSync(tempPath, data, { mode: 0o600, flag: 'wx' });
+    fs.renameSync(tempPath, tokenPath);
+    fs.chmodSync(tokenPath, 0o600);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch (cleanupError) {
+      if (cleanupError.code !== 'ENOENT') throw cleanupError;
+    }
+    throw error;
+  }
+}
+
+function createAuthorizationUrl() {
+  const config = getOAuthConfig();
+  const state = crypto.randomBytes(32).toString('base64url');
+  pendingStates.set(state, Date.now() + OAUTH_STATE_TTL_MS);
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.search = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
+    response_type: 'code',
+    scope: GOOGLE_SCOPES.join(' '),
+    access_type: 'offline',
+    prompt: 'consent select_account',
+    include_granted_scopes: 'true',
+    state,
+  }).toString();
+  return url.toString();
+}
+
+async function exchangeAuthorizationCode(code, state) {
+  const expiresAt = pendingStates.get(state);
+  pendingStates.delete(state);
+  if (!expiresAt || expiresAt < Date.now()) {
+    throw new Error('Google authorization expired or was not started by this server. Start the connection again.');
+  }
+  const config = getOAuthConfig();
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion,
+      code,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      redirect_uri: config.redirectUri,
+      grant_type: 'authorization_code',
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.access_token) {
+    throw new Error(result.error_description || result.error || `Google authentication failed (HTTP ${response.status}).`);
+  }
+  if (!result.refresh_token) {
+    throw new Error('Google did not return a refresh token. Remove this app from your Google Account permissions and connect again.');
+  }
+  saveRefreshToken(result.refresh_token);
+  cachedToken = {
+    value: result.access_token,
+    expiresAt: Date.now() + Math.max(0, Number(result.expires_in || 0) - 60) * 1000,
+  };
+}
+
+async function getAccessToken() {
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
+  const config = getOAuthConfig();
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: getStoredRefreshToken(),
+      grant_type: 'refresh_token',
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -97,9 +168,26 @@ async function createGoogleMeet(booking) {
   const accessToken = await getAccessToken();
   const times = meetingTimes(booking);
   const subjects = Array.isArray(booking.subject) ? booking.subject.join(', ') : '';
+  const spaceResponse = await fetch(`${GOOGLE_MEET_API}/spaces`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ config: { accessType: 'OPEN' } }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const space = await spaceResponse.json();
+  if (!spaceResponse.ok) {
+    const message = space.error && space.error.message;
+    throw new Error(message || `Google Meet space creation failed (HTTP ${spaceResponse.status}).`);
+  }
+  if (!space.name || !space.meetingUri) {
+    throw new Error('Google Meet created a space without a meeting URL.');
+  }
   const calendarId = encodeURIComponent(process.env.GOOGLE_CALENDAR_ID);
   const response = await fetch(
-    `${GOOGLE_CALENDAR_API}/calendars/${calendarId}/events?conferenceDataVersion=1&sendUpdates=none`,
+    `${GOOGLE_CALENDAR_API}/calendars/${calendarId}/events?sendUpdates=none`,
     {
       method: 'POST',
       headers: {
@@ -108,15 +196,10 @@ async function createGoogleMeet(booking) {
       },
       body: JSON.stringify({
         summary: `Abrehot tutoring${subjects ? `: ${subjects}` : ''}`,
-        description: `Abrehot tutoring booking ${booking._id || booking.id || ''}`.trim(),
+        description: `Abrehot tutoring booking ${booking._id || booking.id || ''}\nJoin the open Google Meet: ${space.meetingUri}`.trim(),
+        location: space.meetingUri,
         start: { dateTime: times.start, timeZone: TIME_ZONE },
         end: { dateTime: times.end, timeZone: TIME_ZONE },
-        conferenceData: {
-          createRequest: {
-            requestId: crypto.randomUUID(),
-            conferenceSolutionKey: { type: 'hangoutsMeet' },
-          },
-        },
       }),
       signal: AbortSignal.timeout(20000),
     }
@@ -126,13 +209,8 @@ async function createGoogleMeet(booking) {
     const message = result.error && result.error.message;
     throw new Error(message || `Google Calendar event creation failed (HTTP ${response.status}).`);
   }
-  const joinUrl = result.hangoutLink ||
-    (result.conferenceData && result.conferenceData.entryPoints || [])
-      .find((entry) => entry.entryPointType === 'video' && entry.uri)?.uri;
-  if (!result.id || !joinUrl) {
-    throw new Error('Google Calendar created an event without a Google Meet link. Check calendar permissions and conference settings.');
-  }
-  return { id: result.id, joinUrl };
+  if (!result.id) throw new Error('Google Calendar created an event without an event ID.');
+  return { id: result.id, joinUrl: space.meetingUri };
 }
 
 function isGoogleMeetBooking(booking) {
@@ -140,4 +218,4 @@ function isGoogleMeetBooking(booking) {
     (booking.session === 'online' || (booking.session === 'group' && booking.groupMode === 'online'));
 }
 
-module.exports = { createGoogleMeet, isGoogleMeetBooking };
+module.exports = { createGoogleMeet, isGoogleMeetBooking, createAuthorizationUrl, exchangeAuthorizationCode };
