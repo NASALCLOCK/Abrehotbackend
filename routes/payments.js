@@ -225,23 +225,40 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     let tutorEmailDelivery = { sent: false, reason: 'not-required' };
-    if (approved && (isGoogleMeetBooking(booking) || isZoomBooking(booking))) {
-      if (!meetingUrl) {
-        tutorEmailDelivery = { sent: false, reason: 'meeting-not-ready' };
-      } else if (!booking.tutor || !booking.tutor.email) {
+    const meetingCreatedNow =
+      (zoomDelivery.created && !zoomDelivery.alreadyCreated) ||
+      (googleMeetDelivery.created && !googleMeetDelivery.alreadyCreated);
+    const shouldSendTutorEmail = approved &&
+      (newlyConfirmed || isGoogleMeetBooking(booking) || isZoomBooking(booking));
+    if (shouldSendTutorEmail) {
+      if (!booking.tutor || !booking.tutor.email) {
         tutorEmailDelivery = { sent: false, reason: 'no-recipient' };
-      } else if (existingBooking.tutorConfirmationEmailSentAt) {
+      } else if (existingBooking.tutorConfirmationEmailSentAt && !meetingCreatedNow) {
         tutorEmailDelivery = { sent: true, alreadySent: true };
       } else {
+        const platformNames = { googleMeet: 'Google Meet', zoom: 'Zoom', telegram: 'Telegram' };
+        const tutorMeetingDetails = meetingUrl
+          ? 'Join the ' + meetingName + ' session: ' + meetingUrl
+          : booking.platform === 'telegram'
+            ? 'Please coordinate the Telegram session details through the booking chat.'
+            : booking.session === 'in-person' || booking.groupMode === 'in-person'
+              ? 'Meeting location: ' + ([booking.address, booking.city].filter(Boolean).join(', ') || 'to be arranged with the student')
+              : booking.platform
+                ? 'The meeting link is being prepared and will be sent in a follow-up email.'
+                : 'No online meeting link is required for this session.';
         tutorEmailDelivery = await sendToUser(
           booking.tutor.email,
-          meetingName + ' link for your tutoring session — Abrehot Online Tutorials',
+          (meetingUrl ? meetingName + ' link' : 'Booking confirmed') + ' — Abrehot Online Tutorials',
           'Hi ' + (booking.tutor.fullname || 'there') + ',\n\n' +
-            'A tutoring booking assigned to you has been confirmed.\n\n' +
+            (existingBooking.tutorConfirmationEmailSentAt
+              ? 'The meeting link for your confirmed tutoring booking is now available.\n\n'
+              : 'A tutoring booking assigned to you has been confirmed.\n\n') +
             'Student: ' + ((booking.requestedBy && booking.requestedBy.fullname) || 'your student') + '\n' +
             'Subject(s): ' + ((booking.subject || []).join(', ') || '-') + '\n' +
-            'Date and time: ' + (booking.dateKey || '') + ' ' + (booking.time || '') + ' (Africa/Addis_Ababa)\n\n' +
-            'Join the ' + meetingName + ' session: ' + meetingUrl + '\n\n' +
+            'Session: ' + (booking.session || '-') + '\n' +
+            (booking.platform ? 'Meeting platform: ' + (platformNames[booking.platform] || booking.platform) + '\n' : '') +
+            'Date and time: ' + (booking.dateKey || '') + ' ' + (booking.time || '') + ' (Africa/Addis_Ababa)\n' +
+            tutorMeetingDetails + '\n\n' +
             '— Abrehot Online Tutorials'
         );
         if (tutorEmailDelivery.sent) {

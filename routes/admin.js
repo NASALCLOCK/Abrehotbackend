@@ -12,6 +12,8 @@ const { DEFAULT_SUBJECTS } = require('../utils/subjects');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { notify } = require('../utils/notifications');
 const { sendToUser } = require('../utils/mailer');
+const { createZoomMeeting, isZoomBooking } = require('../utils/zoom');
+const { createGoogleMeet, isGoogleMeetBooking } = require('../utils/googleMeet');
 
 // Every route below requires the x-admin-secret header to match ADMIN_SECRET
 router.use(requireAdmin);
@@ -241,13 +243,44 @@ router.get('/bookings', async (req, res) => {
 
 // POST /api/admin/bookings/:id/approve — admin approves a pending request
 router.post('/bookings/:id/approve', async (req, res) => {
-  const booking = await Booking.findById(req.params.id).populate('tutor', 'fullname user');
+  const booking = await Booking.findById(req.params.id)
+    .populate('tutor', 'fullname email user')
+    .populate('requestedBy', 'fullname email');
   if (!booking) return res.status(404).json({ message: 'Not found' });
   if (booking.status !== 'pending') {
     return res.status(400).json({ message: 'Only pending requests can be approved' });
   }
 
+  let zoomMeeting = booking.zoomJoinUrl
+    ? { id: booking.zoomMeetingId, joinUrl: booking.zoomJoinUrl }
+    : null;
+  let googleMeet = booking.googleMeetJoinUrl
+    ? { id: booking.googleMeetEventId, joinUrl: booking.googleMeetJoinUrl }
+    : null;
+  if (isZoomBooking(booking) && !zoomMeeting) {
+    try {
+      zoomMeeting = await createZoomMeeting(booking);
+    } catch (err) {
+      console.error('[zoom] Could not create a meeting for booking ' + booking.id + ':', err.message);
+    }
+  }
+  if (isGoogleMeetBooking(booking) && !googleMeet) {
+    try {
+      googleMeet = await createGoogleMeet(booking);
+    } catch (err) {
+      console.error('[google-meet] Could not create a meeting for booking ' + booking.id + ':', err.message);
+    }
+  }
+
   booking.status = 'confirmed';
+  if (zoomMeeting) {
+    booking.zoomMeetingId = zoomMeeting.id;
+    booking.zoomJoinUrl = zoomMeeting.joinUrl;
+  }
+  if (googleMeet) {
+    booking.googleMeetEventId = googleMeet.id;
+    booking.googleMeetJoinUrl = googleMeet.joinUrl;
+  }
   await booking.save();
 
   if (booking.requestedBy) {
@@ -255,6 +288,41 @@ router.post('/bookings/:id/approve', async (req, res) => {
   }
   if (booking.tutor && booking.tutor.user) {
     notify(booking.tutor.user, 'A booking request assigned to you was approved by an admin.', '../dashboards/tutor-dash.html');
+  }
+
+  let tutorEmailDelivery = { sent: false, reason: 'no-recipient' };
+  if (booking.tutor && booking.tutor.email) {
+    const meetingUrl = booking.googleMeetJoinUrl || booking.zoomJoinUrl;
+    const meetingName = booking.googleMeetJoinUrl ? 'Google Meet' : 'Zoom';
+    const meetingDetails = meetingUrl
+      ? 'Join the ' + meetingName + ' session: ' + meetingUrl
+      : booking.platform === 'telegram'
+        ? 'Please coordinate the Telegram session details through the booking chat.'
+      : booking.platform
+        ? 'The meeting link is being prepared and will be sent in a follow-up email.'
+        : booking.session === 'in-person' || booking.groupMode === 'in-person'
+          ? 'Meeting location: ' + ([booking.address, booking.city].filter(Boolean).join(', ') || 'to be arranged with the student')
+          : 'No online meeting link is required for this session.';
+    tutorEmailDelivery = await sendToUser(
+      booking.tutor.email,
+      (meetingUrl ? meetingName + ' link' : 'Booking confirmed') + ' — Abrehot Online Tutorials',
+      'Hi ' + (booking.tutor.fullname || 'there') + ',\n\n' +
+        'A tutoring booking assigned to you has been confirmed.\n\n' +
+        'Student: ' + ((booking.requestedBy && booking.requestedBy.fullname) || 'your student') + '\n' +
+        'Subject(s): ' + ((booking.subject || []).join(', ') || '-') + '\n' +
+        'Session: ' + (booking.session || '-') + '\n' +
+        'Date and time: ' + (booking.dateKey || '') + ' ' + (booking.time || '') + ' (Africa/Addis_Ababa)\n' +
+        meetingDetails + '\n\n' +
+        '— Abrehot Online Tutorials'
+    );
+    if (tutorEmailDelivery.sent) {
+      booking.tutorConfirmationEmailSentAt = new Date();
+      try {
+        await booking.save();
+      } catch (emailTrackingError) {
+        console.error('Could not save tutor confirmation email status', emailTrackingError);
+      }
+    }
   }
 
   res.json(booking);

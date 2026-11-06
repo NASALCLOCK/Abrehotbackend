@@ -43,9 +43,10 @@ function mailFrom() {
 // message, etc. still has to succeed even if the email fails).
 async function notifyAdmin(subject, text) {
   const t = getTransporter();
-  if (!t || !process.env.ADMIN_EMAIL) {
+  const adminEmail = process.env.ADMIN_EMAIL || 'abrehottutoring@gmail.com';
+  if (!t) {
     if (!warnedOnce) {
-      console.log('[mailer] Email notifications are off — set SMTP_HOST/SMTP_USER/SMTP_PASS/MAIL_FROM (or GMAIL_USER/GMAIL_APP_PASSWORD) and ADMIN_EMAIL in .env to enable them.');
+      console.log('[mailer] Email notifications are off — set SMTP_HOST/SMTP_USER/SMTP_PASS/MAIL_FROM (or GMAIL_USER/GMAIL_APP_PASSWORD) in .env to enable them.');
       warnedOnce = true;
     }
     return;
@@ -53,7 +54,7 @@ async function notifyAdmin(subject, text) {
   try {
     await t.sendMail({
       from: mailFrom(),
-      to: process.env.ADMIN_EMAIL,
+      to: adminEmail,
       subject,
       text,
     });

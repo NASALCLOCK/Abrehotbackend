@@ -46,6 +46,7 @@ const bookingSchema = new mongoose.Schema(
     bookingEmailSentAt: { type: Date },
     confirmationEmailSentAt: { type: Date },
     tutorConfirmationEmailSentAt: { type: Date },
+    tutorReminderEmailSentAt: { type: Date },
     studentFee: { type: String },
     teacherPayment: { type: Number },
     packageFee: { type: String },

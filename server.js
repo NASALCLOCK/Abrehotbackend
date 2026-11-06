@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const Booking = require('./models/Booking');
+const { sendUpcomingTutorReminders } = require('./utils/tutorReminders');
 
 const app = express();
 
@@ -83,6 +84,14 @@ connectDB()
   .then((result) => {
     if (result.modifiedCount) console.log('Previously approved bookings confirmed:', result.modifiedCount);
     app.listen(PORT, () => console.log(`Abrehot backend running on http://localhost:${PORT}`));
+    const checkTutorReminders = () => {
+      sendUpcomingTutorReminders().catch((err) => {
+        console.error('[reminder] Could not process upcoming tutor reminders:', err);
+      });
+    };
+    checkTutorReminders();
+    const reminderTimer = setInterval(checkTutorReminders, 60 * 1000);
+    reminderTimer.unref();
   })
   .catch((err) => {
     console.error('Backend startup failed:', err);
